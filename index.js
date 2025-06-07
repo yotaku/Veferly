@@ -171,4 +171,5 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+console.log('🔐 読み込んだトークン（先頭のみ）:', TOKEN?.slice(0, 10));
 client.login(TOKEN);
