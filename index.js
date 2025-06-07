@@ -1,9 +1,8 @@
+require('dotenv').config();
 const {
   Client, GatewayIntentBits, Partials, Events, REST, Routes,
   SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
 } = require('discord.js');
-
-require('dotenv').config(); // ← dotenvを読み込む
 
 const {
   Client, GatewayIntentBits, Partials, Events, REST, Routes,
