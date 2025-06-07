@@ -3,8 +3,23 @@ const {
   SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
 } = require('discord.js');
 
-const TOKEN = 'MTM0MDI1Nzk3MjIxOTE1NDQ0NA.GY8LMu.sGAH9eWJCSgPer1ge1ZkZqsOiZEqdRdEzIPTZM'; // 🔒 トークンは絶対に公開しないこと！
-const CLIENT_ID = '1340257972219154444';
+require('dotenv').config(); // ← dotenvを読み込む
+
+const {
+  Client, GatewayIntentBits, Partials, Events, REST, Routes,
+  SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
+} = require('discord.js');
+
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => res.send('✅ Bot is running!'));
+app.listen(3000, () => console.log('🌐 Web server running on port 3000'));
+
+// ✅ .env から読み込む
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+
 
 const client = new Client({
   intents: [
