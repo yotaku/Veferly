@@ -236,12 +236,4 @@ app.listen(PORT, () => {
   console.log(`🌐 Web server running at http://localhost:${PORT}`);
 });
 
-// 定期ping（Replitのサーバーがスリープしないようにする）
-const SELF_URL = process.env.SELF_URL;
-setInterval(() => {
-  fetch(SELF_URL)
-    .then(() => console.log('🔁 Ping sent'))
-    .catch(err => console.error('⚠️ Ping失敗:', err));
-}, 180000); // 3分ごと
-
 client.login(TOKEN);
