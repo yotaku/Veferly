@@ -1,24 +1,72 @@
 require('dotenv').config();
-const {
-  Client, GatewayIntentBits, Partials, Events, REST, Routes,
-  SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
-} = require('discord.js');
-
-const {
-  Client, GatewayIntentBits, Partials, Events, REST, Routes,
-  SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
-} = require('discord.js');
-
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
-const app = express();
+const {
+  Client, GatewayIntentBits, Partials, Events, REST, Routes,
+  SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
+} = require('discord.js');
+const { encrypt, decrypt } = require('./encrypt');
 
-app.get('/', (req, res) => res.send('✅ Bot is running!'));
-app.listen(3000, () => console.log('🌐 Web server running on port 3000'));
-
-// ✅ .env から読み込む
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+const DATA_DIR = path.join(__dirname, 'data');
+const AUTH_FILE = path.join(DATA_DIR, 'authenticated_users.json');
+const GUILD_FILE = path.join(DATA_DIR, 'guild_role_settings.json');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+const loadEncryptedArray = (file) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data.map(item => {
+      try {
+        return decrypt(item);
+      } catch {
+        const enc = encrypt(item); // 旧データ自動暗号化
+        return decrypt(enc);
+      }
+    });
+  } catch {
+    return [];
+  }
+};
+
+const saveEncryptedArray = (file, array) => {
+  const encData = array.map(id => encrypt(id));
+  fs.writeFileSync(file, JSON.stringify(encData, null, 2), 'utf8');
+};
+
+const loadEncryptedMap = (file) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const map = new Map();
+    for (const [k, v] of Object.entries(data)) {
+      try {
+        map.set(decrypt(k), decrypt(v));
+      } catch {
+        const encK = encrypt(k), encV = encrypt(v);
+        map.set(decrypt(encK), decrypt(encV));
+      }
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+};
+
+const saveEncryptedMap = (file, map) => {
+  const enc = {};
+  for (const [k, v] of map.entries()) {
+    enc[encrypt(k)] = encrypt(v);
+  }
+  fs.writeFileSync(file, JSON.stringify(enc, null, 2), 'utf8');
+};
+
+const authenticatedUsers = new Set(loadEncryptedArray(AUTH_FILE));
+const guildRoleSettings = loadEncryptedMap(GUILD_FILE);
+const authCodes = new Map();
 
 const client = new Client({
   intents: [
@@ -31,12 +79,9 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// --- データ保持用 ---
-const authCodes = new Map();             // userId => { code, guildId }
-const authenticatedUsers = new Set();    // 認証済み userId
-const guildRoleSettings = new Map();     // guildId => roleId
+const fetch = require('node-fetch');
 
-// --- コマンド定義 ---
+// ==== スラッシュコマンド登録 ====
 const commands = [
   new SlashCommandBuilder()
     .setName('setup')
@@ -55,8 +100,6 @@ const commands = [
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-// --- スラッシュコマンド登録 ---
 (async () => {
   try {
     console.log('🔁 スラッシュコマンド登録中...');
@@ -71,13 +114,26 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ ログイン成功: ${client.user.tag}`);
 });
 
-// --- インタラクション処理 ---
+client.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    if (authenticatedUsers.has(member.id)) {
+      const roleId = guildRoleSettings.get(member.guild.id);
+      if (roleId) {
+        await member.roles.add(roleId);
+        console.log(`✅ ${member.user.tag} に認証済みロールを再付与しました。`);
+      }
+    }
+  } catch (err) {
+    console.error('GuildMemberAddロール付与エラー:', err);
+  }
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
       const member = await interaction.guild.members.fetch(interaction.user.id);
       if (!member.permissions.has('Administrator')) {
-        return interaction.reply({ content: '🚫 このコマンドは管理者専用です。', ephemeral: true });
+        return interaction.reply({ content: '🚫 管理者権限が必要です。', ephemeral: true });
       }
 
       const channel = interaction.options.getChannel('channel');
@@ -85,18 +141,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const roleId = role.id;
       const guildId = interaction.guild.id;
 
-      // 設定保存
       guildRoleSettings.set(guildId, roleId);
-
-      // 既存メッセージ削除
-      try {
-        const messages = await channel.messages.fetch({ limit: 100 });
-        const deletableMessages = messages.filter(m => m.deletable);
-        await channel.bulkDelete(deletableMessages);
-      } catch (err) {
-        console.error('メッセージ削除エラー:', err);
-        return interaction.reply({ content: '⚠️ メッセージの削除に失敗しました。Botに必要な権限があるか確認してください。', ephemeral: true });
-      }
+      saveEncryptedMap(GUILD_FILE, guildRoleSettings);
 
       const button = new ButtonBuilder()
         .setCustomId('verify_button')
@@ -110,23 +156,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [row]
       });
 
-      await interaction.reply({ content: `✅ 認証ボタンを <#${channel.id}> に設置しました。`, ephemeral: true });
+      return interaction.reply({ content: `✅ 認証ボタンを <#${channel.id}> に設置しました。`, ephemeral: true });
     }
 
     if (interaction.isButton() && interaction.customId === 'verify_button') {
-      if (authenticatedUsers.has(interaction.user.id)) {
-        return interaction.reply({ content: '✅ あなたは既に認証済みです。', ephemeral: true });
+      const userId = interaction.user.id;
+      const guildId = interaction.guild.id;
+      const roleId = guildRoleSettings.get(guildId);
+      const member = await interaction.guild.members.fetch(userId);
+
+      if (authenticatedUsers.has(userId)) {
+        if (roleId && !member.roles.cache.has(roleId)) {
+          await member.roles.add(roleId);
+          return interaction.reply({ content: '✅ 認証済みです。ロールを再付与しました。', ephemeral: true });
+        } else {
+          return interaction.reply({ content: '✅ あなたは既に認証済みです。', ephemeral: true });
+        }
       }
 
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      authCodes.set(interaction.user.id, { code, guildId: interaction.guild.id });
+      authCodes.set(userId, { code, guildId });
 
       try {
         await interaction.user.send(`✅ 認証コード: **${code}** をこのDMに返信してください。`);
-        await interaction.reply({ content: '📩 DMに認証コードを送信しました。', ephemeral: true });
+        return interaction.reply({ content: '📩 DMに認証コードを送信しました。', ephemeral: true });
       } catch (err) {
         console.error('DM送信失敗:', err);
-        await interaction.reply({ content: '⚠️ DMを送信できませんでした。DMを有効にしてください。', ephemeral: true });
+        return interaction.reply({ content: '⚠️ DMを送信できませんでした。DMを有効にしてください。', ephemeral: true });
       }
     }
   } catch (err) {
@@ -134,7 +190,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// --- DMでの認証コード処理 ---
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.channel.type !== 1 || message.author.bot) return;
@@ -146,23 +201,22 @@ client.on(Events.MessageCreate, async (message) => {
 
     if (message.content.includes(code)) {
       authenticatedUsers.add(message.author.id);
+      saveEncryptedArray(AUTH_FILE, Array.from(authenticatedUsers));
 
-      for (const [guildId, guild] of client.guilds.cache) {
-        const roleId = guildRoleSettings.get(guildId);
-        if (!roleId) continue;
+      for (const [guildId, roleId] of guildRoleSettings.entries()) {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
 
-        try {
-          const member = await guild.members.fetch(message.author.id).catch(() => null);
-          if (member) {
-            await member.roles.add(roleId).catch(console.error);
-          }
-        } catch (e) {
-          console.error(`ロール付与失敗 @ ${guild.name}:`, e);
+        const member = await guild.members.fetch(message.author.id).catch(() => null);
+        if (member) {
+          await member.roles.add(roleId).catch(err => {
+            console.error(`ロール付与失敗(${guild.name}):`, err);
+          });
         }
       }
 
       authCodes.delete(message.author.id);
-      await message.reply('✅ 認証に成功しました！全参加サーバーでロールを付与しました。');
+      await message.reply('✅ 認証に成功しました！ロールを付与しました。');
     } else {
       await message.reply('❌ 認証コードが一致しません。');
     }
@@ -171,5 +225,23 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-console.log('🔐 読み込んだトークン（先頭のみ）:', TOKEN?.slice(0, 10));
+const app = express();
+
+app.get('/', (_, res) => {
+  res.send('✅ Bot is running!');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🌐 Web server running at http://localhost:${PORT}`);
+});
+
+// 定期ping（Replitのサーバーがスリープしないようにする）
+const SELF_URL = process.env.SELF_URL;
+setInterval(() => {
+  fetch(SELF_URL)
+    .then(() => console.log('🔁 Ping sent'))
+    .catch(err => console.error('⚠️ Ping失敗:', err));
+}, 180000); // 3分ごと
+
 client.login(TOKEN);
