@@ -231,6 +231,10 @@ app.get('/', (_, res) => {
   res.send('✅ Bot is running!');
 });
 
+app.listen(PORT, () => {
+  console.log(`🌐 Express server listening on port ${PORT}`);
+});
+
 app.get('/callback', (req, res) => {
   // OAuth2処理
 });
