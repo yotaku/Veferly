@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
 const {
   Client, GatewayIntentBits, Partials, Events, REST, Routes,
   SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
@@ -230,10 +231,6 @@ app.get('/', (_, res) => {
   res.send('✅ Bot is running!');
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🌐 Web server running at http://localhost:${PORT}`);
-});
 app.get('/callback', (req, res) => {
   // OAuth2処理
 });
