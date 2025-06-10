@@ -1,7 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
 const {
   Client, GatewayIntentBits, Partials, Events, REST, Routes,
   SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
