@@ -231,8 +231,10 @@ app.get('/', (_, res) => {
   res.send('✅ Bot is running!');
 });
 
+const PORT = process.env.PORT || 3000; // fallbackも指定しておくと開発でも動きます
+
 app.listen(PORT, () => {
-  console.log(`🌐 Express server listening on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 app.get('/callback', (req, res) => {
