@@ -227,14 +227,16 @@ client.on(Events.MessageCreate, async (message) => {
 
 const app = express();
 
-app.get('/', (_, res) => {
-  res.send('✅ Bot is running!');
+const PORT = process.env.PORT || 3000;
+
+// ダミーのHTTPエンドポイント（外部からアクセスされなくてもOK）
+app.get('/', (req, res) => {
+  res.send('Bot is alive!');
 });
 
-const PORT = process.env.PORT || 3000; // fallbackも指定しておくと開発でも動きます
-
+// Webサーバーを起動する
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🌐 Web server running on port ${PORT}`);
 });
 
 app.get('/callback', (req, res) => {
