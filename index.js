@@ -1,7 +1,11 @@
+# Save previous index.js content with webhook integration and error handling to a file
+
+index_js_content = """
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const fetch = require('node-fetch');
 const {
   Client, GatewayIntentBits, Partials, Events, REST, Routes,
   SlashCommandBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ChannelType
@@ -10,6 +14,20 @@ const { encrypt, decrypt } = require('./encrypt');
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
+
+const sendWebhook = async (content) => {
+  if (!WEBHOOK_URL) return;
+  try {
+    await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+  } catch (err) {
+    console.error('❌ Webhook送信失敗:', err);
+  }
+};
 
 const DATA_DIR = path.join(__dirname, 'data');
 const AUTH_FILE = path.join(DATA_DIR, 'authenticated_users.json');
@@ -24,7 +42,7 @@ const loadEncryptedArray = (file) => {
       try {
         return decrypt(item);
       } catch {
-        const enc = encrypt(item); // 旧データ自動暗号化
+        const enc = encrypt(item);
         return decrypt(enc);
       }
     });
@@ -79,9 +97,6 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-const fetch = require('node-fetch');
-
-// ==== スラッシュコマンド登録 ====
 const commands = [
   new SlashCommandBuilder()
     .setName('setup')
@@ -107,6 +122,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     console.log('✅ スラッシュコマンド登録完了。');
   } catch (error) {
     console.error('❌ スラッシュコマンド登録エラー:', error);
+    sendWebhook(`❌ スラッシュコマンド登録エラー: \`\`\`${error.message}\`\`\``);
   }
 })();
 
@@ -124,7 +140,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
       }
     }
   } catch (err) {
-    console.error('GuildMemberAddロール付与エラー:', err);
+    const errorId = `E${Date.now().toString().slice(-6)}`;
+    console.error(`GuildMemberAddロール付与エラー [${errorId}]:`, err);
+    sendWebhook(`❌ GuildMemberAdd ロール付与エラー [${errorId}] \n\`\`\`${err.message}\`\`\``);
   }
 });
 
@@ -143,6 +161,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       guildRoleSettings.set(guildId, roleId);
       saveEncryptedMap(GUILD_FILE, guildRoleSettings);
+
+      sendWebhook(`🛠️ 新しいサーバーで/setupが実行されました\nGuild ID: \`${guildId}\`\nRole ID: \`${roleId}\``);
 
       const button = new ButtonBuilder()
         .setCustomId('verify_button')
@@ -186,7 +206,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
   } catch (err) {
-    console.error('Interactionエラー:', err);
+    const errorId = `E${Date.now().toString().slice(-6)}`;
+    console.error(`Interactionエラー [${errorId}]:`, err);
+    sendWebhook(`❌ Interactionエラー [${errorId}] \n\`\`\`${err.message}\`\`\``);
   }
 });
 
@@ -210,38 +232,43 @@ client.on(Events.MessageCreate, async (message) => {
         const member = await guild.members.fetch(message.author.id).catch(() => null);
         if (member) {
           await member.roles.add(roleId).catch(err => {
-            console.error(`ロール付与失敗(${guild.name}):`, err);
+            const errorId = `E${Date.now().toString().slice(-6)}`;
+            console.error(`ロール付与失敗 [${errorId}] (${guild.name}):`, err);
+            sendWebhook(`❌ ロール付与失敗 [${errorId}] (${guild.name})\nUser: <@${message.author.id}>\n\`\`\`${err.message}\`\`\``);
+            message.reply(`⚠️ エラーが発生しました（エラーコード: \`${errorId}\`）。管理者にお問い合わせください。`);
           });
         }
       }
 
       authCodes.delete(message.author.id);
       await message.reply('✅ 認証に成功しました！ロールを付与しました。');
+      await sendWebhook(`✅ ユーザー <@${message.author.id}> が認証に成功しました。`);
     } else {
       await message.reply('❌ 認証コードが一致しません。');
     }
   } catch (err) {
-    console.error('DM認証エラー:', err);
+    const errorId = `E${Date.now().toString().slice(-6)}`;
+    console.error(`DM認証エラー [${errorId}]:`, err);
+    sendWebhook(`❌ DM認証エラー [${errorId}]\n\`\`\`${err.message}\`\`\``);
+    message.reply(`⚠️ エラーが発生しました（エラーコード: \`${errorId}\`）。管理者にお問い合わせください。`);
   }
 });
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
-// ダミーのHTTPエンドポイント（外部からアクセスされなくてもOK）
 app.get('/', (req, res) => {
   res.send('Bot is alive!');
 });
 
-// Webサーバーを起動する
 app.listen(PORT, () => {
   console.log(`🌐 Web server running on port ${PORT}`);
 });
+"""
 
-app.get('/callback', (req, res) => {
-  // OAuth2処理
-});
+# Save to file
+file_path = "/mnt/data/index.js"
+with open(file_path, "w", encoding="utf-8") as f:
+    f.write(index_js_content)
 
-
-client.login(TOKEN);
+file_path
