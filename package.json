@@ -2,7 +2,7 @@
   "name": "discord-verification-bot",
   "version": "1.0.0",
   "description": "Discord bot for role-based verification via DM",
-  "main": "index.js",
+  "main": "index.cjs",
   "type": "commonjs",
   "scripts": {
     "start": "node index.cjs"
