@@ -261,3 +261,11 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🌐 Web server running on port ${PORT}`);
 });
+
+try {
+  await client.login(TOKEN);
+  console.log('✅ Discordログイン成功');
+} catch (error) {
+  console.error('❌ Discordログイン失敗:', error);
+  sendWebhook('❌ Discordログイン失敗', error); // エラーもWebhook通知
+}
