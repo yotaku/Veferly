@@ -1,6 +1,3 @@
-# Save previous index.js content with webhook integration and error handling to a file
-
-index_js_content = """
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -264,11 +261,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🌐 Web server running on port ${PORT}`);
 });
-"""
-
-# Save to file
-file_path = "/mnt/data/index.js"
-with open(file_path, "w", encoding="utf-8") as f:
-    f.write(index_js_content)
-
-file_path
